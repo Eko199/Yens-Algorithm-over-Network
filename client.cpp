@@ -106,16 +106,6 @@ int getIntInput(const int min = INT_MIN, const int max = INT_MAX) {
     return result;
 }
 
-void sendUint(const int fd, const unsigned n) {
-    uint32_t nToSend = htonl(n);
-
-    if (write(fd, &nToSend, sizeof(uint32_t)) < 0) {
-        perror("write");
-        close(fd);
-        exit(-1);
-    }
-}
-
 std::vector<std::vector<std::pair<unsigned, unsigned>>> getGraphInput() {
     std::cout << "How many vertices does the graph have? ";
     unsigned n = static_cast<unsigned>(getIntInput(1));
@@ -140,6 +130,16 @@ std::vector<std::vector<std::pair<unsigned, unsigned>>> getGraphInput() {
     }
 
     return graph;
+}
+
+void sendUint(const int fd, const unsigned n) {
+    uint32_t nToSend = htonl(n);
+
+    if (write(fd, &nToSend, sizeof(uint32_t)) < 0) {
+        perror("write");
+        close(fd);
+        exit(-1);
+    }
 }
 
 void sendGraph(const int fd, const std::vector<std::vector<std::pair<unsigned, unsigned>>>& graph) {

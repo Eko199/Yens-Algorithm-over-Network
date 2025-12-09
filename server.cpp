@@ -1,12 +1,21 @@
 #include <cstdio>
 #include <iostream>
 #include <netinet/in.h>
+#include <csignal>
 #include <sys/socket.h>
 #include <sys/types.h>
+#include <thread>
 #include <unistd.h>
 #include "yen.h"
 
-bool readUint32(int fd, uint32_t* value) {
+bool running = true;
+
+void interruptHandler(int signum) {
+    running = false;
+    std::cout << "Closing...";
+}
+
+bool readUint32(const int fd, uint32_t* value) {
     uint32_t networkValue;
     char* buf = reinterpret_cast<char*>(&networkValue);
     int count = 0;
@@ -24,7 +33,7 @@ bool readUint32(int fd, uint32_t* value) {
     return total == sizeof(uint32_t);
 }
 
-bool readGraph(int fd, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& graph) {
+bool readGraph(const int fd, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& graph) {
     uint32_t n;
 
     if (!readUint32(fd, &n)) {
@@ -57,9 +66,9 @@ bool readGraph(int fd, std::vector<std::vector<std::pair<uint32_t, uint32_t>>>& 
 }
 
 template <typename T>
-ssize_t send32(const int fd, const T n) {
+ssize_t send32(const int fd, const T value) {
     static_assert(sizeof(T) == 4, "Value must be 32-bit.");
-    uint32_t nToSend = htonl(static_cast<uint32_t>(n));
+    uint32_t nToSend = htonl(static_cast<uint32_t>(value));
     return write(fd, &nToSend, sizeof(uint32_t));
 }
 
@@ -93,8 +102,54 @@ bool sendPaths(const int fd, const std::vector<path>& paths) {
     return true;
 }
 
+void serveClient(const int clientFd) {
+    std::vector<std::vector<edge>> graph;
+    uint32_t start, end, k;
+
+    if (!readGraph(clientFd, graph) || !readUint32(clientFd, &start) || !readUint32(clientFd, &end) || !readUint32(clientFd, &k)) {
+        std::cout << "An error occured.\n";
+        close(clientFd);
+        return;
+    }
+
+    if (start >= graph.size() || end >= graph.size()) {
+        if (send32<int32_t>(clientFd, -1) < 0 || write(clientFd, "Start or end is not a valid vertex!\n", 36) < 0) {
+            perror("write");
+            close(clientFd);
+            return;
+        }
+    }
+
+    if (k == 0) {
+        if (send32<int32_t>(clientFd, -1) < 0 || write(clientFd, "K must be at least 1!\n", 22) < 0) {
+            perror("write");
+            close(clientFd);
+            return;
+        }
+    }
+
+    std::vector<path> paths = yen(graph, start, end, k);
+    if (!sendPaths(clientFd, paths)) {
+        std::cout << "An error occured.\n";
+        close(clientFd);
+        return;
+    }
+
+    close(clientFd);
+}
+
 int main() {
+    if (signal(SIGINT, interruptHandler) == SIG_ERR) {
+        perror("signal");
+        return -1;
+    }
+    
     int s = socket(AF_INET, SOCK_STREAM, 0);
+
+    if (s < 0) {
+        perror("socket");
+        return -1;
+    }
 
     struct sockaddr_in addr = { AF_INET, htons(4095), 0 };
 
@@ -111,51 +166,19 @@ int main() {
     }
 
     struct sockaddr_in clientAddr;
-    socklen_t clientAddrLen = sizeof(clientAddr);
-    int client_fd = accept(s, (struct sockaddr*) &clientAddr, &clientAddrLen);
+    
+    while (running) {
+        socklen_t clientAddrLen = sizeof(clientAddr);
+        int clientFd = accept(s, (struct sockaddr*) &clientAddr, &clientAddrLen);
 
-    if (client_fd < 0) {
-        perror("accept");
-        return -1;
-    }
-
-    std::vector<std::vector<edge>> graph;
-    uint32_t start, end, k;
-
-    if (!readGraph(client_fd, graph) || !readUint32(client_fd, &start) || !readUint32(client_fd, &end) || !readUint32(client_fd, &k)) {
-        std::cout << "An error occured.\n";
-        close(client_fd);
-        close(s);
-        return -1;
-    }
-
-    if (start >= graph.size() || end >= graph.size()) {
-        if (send32<int32_t>(client_fd, -1) < 0 || write(client_fd, "Start or end is not a valid vertex!\n", 36) < 0) {
-            perror("write");
-            close(client_fd);
-            close(s);
-            return -1;
+        if (clientFd < 0) {
+            perror("accept");
+            continue;
         }
+
+        serveClient(clientFd);
     }
 
-    if (k == 0) {
-        if (send32<int32_t>(client_fd, -1) < 0 || write(client_fd, "K must be at least 1!\n", 22) < 0) {
-            perror("write");
-            close(client_fd);
-            close(s);
-            return -1;
-        }
-    }
-
-    std::vector<path> paths = yen(graph, start, end, k);
-    if (!sendPaths(client_fd, paths)) {
-        std::cout << "An error occured.\n";
-        close(client_fd);
-        close(s);
-        return -1;
-    }
-
-    close(client_fd);
     close(s);
     return 0;
 }
