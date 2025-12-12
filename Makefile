@@ -10,7 +10,7 @@ bin/%.out: src/%.c
 	gcc $< -o $@
 	chmod +x $@
 
-bin/server.out: src/server.cpp src/yen.cpp
+bin/server.out: src/server.cpp src/yen.cpp src/threadpool.cpp
 	g++ $(CXXFlags) $^ -o $@ -pthread -ltbb
 	chmod +x $@
 

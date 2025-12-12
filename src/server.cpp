@@ -6,6 +6,7 @@
 #include <sys/types.h>
 #include <thread>
 #include <unistd.h>
+#include "threadpool.h"
 #include "yen.h"
 
 bool running = true;
