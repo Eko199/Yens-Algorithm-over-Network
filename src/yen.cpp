@@ -115,7 +115,8 @@ std::vector<path> yen(const std::vector<std::vector<edge>>& graph, const unsigne
         throw std::invalid_argument("Invalid K! Must be at least 1.");
     }
 
-    std::vector<path> kth_path(k);
+    std::vector<path> kth_path;
+    kth_path.reserve(k);
     std::vector<std::vector<unsigned>> kth_cost(k);
 
     pathWithCost path0 = dijkstra_to(graph, start, end);
@@ -124,7 +125,7 @@ std::vector<path> yen(const std::vector<std::vector<edge>>& graph, const unsigne
         return {};
     }
 
-    kth_path[0] = path0.pathNodes;
+    kth_path.push_back(path0.pathNodes);
     kth_cost[0] = path0.cumulativeCost;
 
     std::priority_queue<pathWithCost> candidate_paths;
@@ -183,7 +184,7 @@ std::vector<path> yen(const std::vector<std::vector<edge>>& graph, const unsigne
             break;
         }
 
-        kth_path[curr_k] = candidate_paths.top().pathNodes;
+        kth_path.push_back(candidate_paths.top().pathNodes);
         kth_cost[curr_k] = candidate_paths.top().cumulativeCost;
 
         candidates_set.erase(kth_path[curr_k]);

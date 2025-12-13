@@ -190,24 +190,35 @@ int main() {
 
     close(s);
 
-    std::cout << "Top " << k << " shortest paths:\n";
+    if (paths.size() == 0) {
+        std::cout << "No path found!\n";
+        return 0;
+    }
+
+    if (paths.size() < k) {
+        std::cout << "Only " << paths.size() << " path/s found.\n";
+    }
+
+    std::cout << "Top " << paths.size() << " shortest paths:\n";
+
     for (size_t i = 0; i < paths.size(); ++i) {
-        int cost = 0;
+        unsigned cost = 0;
 
         for (size_t j = 0; j + 1 < paths[i].size(); ++j) {
             unsigned u = paths[i][j];
-            unsigned v = paths[i][j+1];
+            unsigned v = paths[i][j + 1];
             
             for (auto& e : graph[u]) {
                 if (e.first == v) { 
-                    cost += e.second; break; 
+                    cost += e.second; 
+                    break; 
                 }
             }
         }
 
-        std::cout << "Path " << i+1 << ": ";
+        std::cout << "Path " << i + 1 << ": ";
 
-        for (int node : paths[i]) {
+        for (unsigned node : paths[i]) {
             std::cout << node << " ";
         }
         
