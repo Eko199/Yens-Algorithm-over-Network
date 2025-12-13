@@ -1,0 +1,3 @@
+Path 1: 0 2 3 5 (cost = 5)
+Path 2: 0 1 4 5 (cost = 6)
+Path 3: 0 2 4 5 (cost = 6)
