@@ -1,3 +1,5 @@
+#include <bit>
+#include <chrono>
 #include <cstdio>
 #include <errno.h>
 #include <functional>
@@ -75,7 +77,7 @@ bool readGraph(const int fd, std::vector<std::vector<std::pair<uint32_t, uint32_
 template <typename T>
 ssize_t send32(const int fd, const T value) {
     static_assert(sizeof(T) == 4, "Value must be 32-bit.");
-    uint32_t nToSend = htonl(static_cast<uint32_t>(value));
+    uint32_t nToSend = htonl(std::bit_cast<uint32_t>(value));
     return write(fd, &nToSend, sizeof(uint32_t));
 }
 
@@ -147,9 +149,19 @@ void serveClient(const int clientFd) {
         return;
     }
 
+    const auto startTime = std::chrono::high_resolution_clock::now();
     std::vector<path> paths = yen(graph, start, end, k, threads);
+    const auto endTime = std::chrono::high_resolution_clock::now();
+
     if (!sendPaths(clientFd, paths)) {
         std::cout << "An error occured.\n";
+        close(clientFd);
+        return;
+    }
+
+    const std::chrono::duration<float, std::milli> ms = endTime - startTime;
+    if (send32<float>(clientFd, ms.count()) < 0) {
+        perror("write");
         close(clientFd);
         return;
     }

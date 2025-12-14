@@ -1,3 +1,4 @@
+#include <bit>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -25,7 +26,7 @@ bool read32(int fd, T* value) {
         perror("read");
     }
 
-    *value = static_cast<T>(ntohl(networkValue));
+    *value = std::bit_cast<T>(ntohl(networkValue));
     return total == sizeof(T);
 }
 
@@ -195,6 +196,11 @@ int main() {
         return -1;
     }
 
+    float time = -1;
+    if (!read32<float>(s, &time)) {
+        std::cout << "Could not read time from the server!\n";
+    }
+
     close(s);
 
     if (paths.size() == 0) {
@@ -232,5 +238,9 @@ int main() {
         std::cout << "(cost = " << cost << ")\n";
     }
 
+    if (time >= 0) {
+        std::cout << "The algorithm took " << time << "ms.\n";
+    }
+    
     return 0;
 }
