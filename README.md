@@ -1,4 +1,4 @@
-# Yen's Algorithm over Network
+# Yen's Algorithm over TCP
 
 This project implements a multi-threaded server capable of processing large graphs to find the $K$ shortest loopless paths between two nodes. It features a custom thread pool architecture, low-level socket programming, and hardware-aware optimizations for modern multi-core CPUs.
 
