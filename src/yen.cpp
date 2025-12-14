@@ -108,7 +108,8 @@ pathWithCost dijkstra_to(const std::vector<std::vector<edge>>& graph, const unsi
     return result;
 }
 
-std::vector<path> yen(const std::vector<std::vector<edge>>& graph, const unsigned start, const unsigned end, const unsigned k) {
+std::vector<path> yen(const std::vector<std::vector<edge>>& graph, const unsigned start, 
+    const unsigned end, const unsigned k, const unsigned threads) {
     if (start > graph.size() - 1 || end > graph.size() - 1) {
         throw std::invalid_argument("Provided start or end is not a vertex in the graph.");
     }
@@ -133,7 +134,7 @@ std::vector<path> yen(const std::vector<std::vector<edge>>& graph, const unsigne
     std::priority_queue<pathWithCost> candidate_paths;
     std::unordered_set<path, pathHash> candidates_set;
 
-    Threadpool tpool;
+    Threadpool tpool(threads);
     std::mutex candidates_mutex;
 
     for (unsigned curr_k = 1; curr_k < k; ++curr_k) {

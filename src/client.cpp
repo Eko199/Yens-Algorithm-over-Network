@@ -176,10 +176,17 @@ int main() {
     std::cout << "Enter K: ";
     unsigned k = getIntInput(1);
 
+    unsigned maxThreads;
+    read32(s, &maxThreads);
+
+    std::cout << "Enter thread count (1-" << maxThreads << "): ";
+    unsigned threads = getIntInput(1, maxThreads);
+
     sendGraph(s, graph);
     sendUint(s, start);
     sendUint(s, end);
     sendUint(s, k);
+    sendUint(s, threads);
 
     std::vector<std::vector<unsigned>> paths;
 

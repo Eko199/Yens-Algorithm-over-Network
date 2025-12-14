@@ -3,6 +3,7 @@
 #include <functional>
 #include <iostream>
 #include <netinet/in.h>
+#include <cstring>
 #include <csignal>
 #include <sys/select.h>
 #include <sys/socket.h>
@@ -11,6 +12,8 @@
 #include <unistd.h>
 #include "threadpool.h"
 #include "yen.h"
+
+#define MAX_USERS 4
 
 bool running = true;
 
@@ -107,32 +110,44 @@ bool sendPaths(const int fd, const std::vector<path>& paths) {
 }
 
 void serveClient(const int clientFd) {
-    std::vector<std::vector<edge>> graph;
-    uint32_t start, end, k;
+    uint32_t maxThreads = std::max(std::thread::hardware_concurrency() / MAX_USERS, 1u);
+    send32<uint32_t>(clientFd, maxThreads);
 
-    if (!readGraph(clientFd, graph) || !readUint32(clientFd, &start) || !readUint32(clientFd, &end) || !readUint32(clientFd, &k)) {
+    std::vector<std::vector<edge>> graph;
+    uint32_t start, end, k, threads;
+
+    if (!readGraph(clientFd, graph) || !readUint32(clientFd, &start) || !readUint32(clientFd, &end) 
+        || !readUint32(clientFd, &k) || !readUint32(clientFd, &threads)) {
         std::cout << "An error occured.\n";
         close(clientFd);
         return;
     }
 
+    bool error = false;
+    const char* message;
+
     if (start >= graph.size() || end >= graph.size()) {
-        if (send32<int32_t>(clientFd, -1) < 0 || write(clientFd, "Start or end is not a valid vertex!\n", 36) < 0) {
-            perror("write");
-            close(clientFd);
-            return;
-        }
+        error = true;
+        message = "Start or end is not a valid vertex!\n";
     }
 
-    if (k == 0) {
-        if (send32<int32_t>(clientFd, -1) < 0 || write(clientFd, "K must be at least 1!\n", 22) < 0) {
-            perror("write");
-            close(clientFd);
-            return;
-        }
+    if (!error && k == 0) {
+        error = true;
+        message = "K must be at least 1!\n";
     }
 
-    std::vector<path> paths = yen(graph, start, end, k);
+    if (!error && (threads == 0 || threads > maxThreads)) {
+        error = true;
+        message = "Invalid thread count!\n";
+    }
+
+    if (error && (send32<int32_t>(clientFd, -1) < 0 || write(clientFd, message, strlen(message)) < 0)) {
+        perror("write");
+        close(clientFd);
+        return;
+    }
+
+    std::vector<path> paths = yen(graph, start, end, k, threads);
     if (!sendPaths(clientFd, paths)) {
         std::cout << "An error occured.\n";
         close(clientFd);
@@ -155,6 +170,13 @@ int main() {
         return -1;
     }
 
+    int reuse = 1;
+    if (setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (const void*) &reuse, sizeof(reuse)) < 0) {
+        perror("setsockopt");
+        close(s);
+        return -1;
+    }
+
     struct sockaddr_in addr = { AF_INET, htons(4095), 0 };
 
     if (bind(s, (const struct sockaddr*) &addr, sizeof(addr)) < 0) {
@@ -163,19 +185,18 @@ int main() {
         return -1;
     }
 
-    if (listen(s, 20) < 0) {
+    if (listen(s, MAX_USERS) < 0) {
         perror("listen");
         close(s);
         return -1;
     }
 
-    Threadpool tpool(30);
-    
+    Threadpool tpool(MAX_USERS);
     fd_set readFds;
-    FD_ZERO(&readFds);
-    FD_SET(s, &readFds);
 
     while (running) {
+        FD_ZERO(&readFds);
+        FD_SET(s, &readFds);
         int cnt = select(s + 1, &readFds, nullptr, nullptr, nullptr);
 
         if (cnt < 0) {
