@@ -17,6 +17,7 @@
 
 #define MAX_USERS 4
 
+const uint32_t MAX_THREADS = std::max(std::thread::hardware_concurrency() / MAX_USERS, 1u);
 bool running = true;
 
 void interruptHandler(int signum) {
@@ -112,9 +113,6 @@ bool sendPaths(const int fd, const std::vector<path>& paths) {
 }
 
 void serveClient(const int clientFd) {
-    uint32_t maxThreads = std::max(std::thread::hardware_concurrency() / MAX_USERS, 1u);
-    send32<uint32_t>(clientFd, maxThreads);
-
     std::vector<std::vector<edge>> graph;
     uint32_t start, end, k, threads;
 
@@ -138,7 +136,7 @@ void serveClient(const int clientFd) {
         message = "K must be at least 1!\n";
     }
 
-    if (!error && (threads == 0 || threads > maxThreads)) {
+    if (!error && (threads == 0 || threads > MAX_THREADS)) {
         error = true;
         message = "Invalid thread count!\n";
     }
@@ -204,12 +202,17 @@ int main() {
     }
 
     Threadpool tpool(MAX_USERS);
-    fd_set readFds;
+
+    fd_set readFds, writeFds;
+    FD_ZERO(&readFds);
+    FD_ZERO(&writeFds);
+    FD_SET(s, &readFds);
+    int maxFd = s;
 
     while (running) {
-        FD_ZERO(&readFds);
-        FD_SET(s, &readFds);
-        int cnt = select(s + 1, &readFds, nullptr, nullptr, nullptr);
+        fd_set readFdsReady = readFds;
+        fd_set writeFdsReady = writeFds;
+        int cnt = select(maxFd + 1, &readFdsReady, &writeFdsReady, nullptr, nullptr);
 
         if (cnt < 0) {
             if (errno == EINTR) {
@@ -225,16 +228,39 @@ int main() {
             continue;
         }
 
-        struct sockaddr_in clientAddr;
-        socklen_t clientAddrLen = sizeof(clientAddr);
-        int clientFd = accept(s, (struct sockaddr*) &clientAddr, &clientAddrLen);
+        int oldMaxFd = maxFd;
+        maxFd = s;
+        
+        for (int i = 0; i <= oldMaxFd; ++i) {
+            if (FD_ISSET(i, &readFdsReady)) {
+                if (i != s) {
+                    FD_CLR(i, &readFds);
+                    tpool.enqueue(std::bind(serveClient, i));
+                    continue;
+                }
 
-        if (clientFd < 0) {
-            perror("accept");
-            continue;
+                struct sockaddr_in clientAddr;
+                socklen_t clientAddrLen = sizeof(clientAddr);
+                int clientFd = accept(s, (struct sockaddr*) &clientAddr, &clientAddrLen);
+
+                if (clientFd < 0) {
+                    perror("accept");
+                    continue;
+                }
+
+                FD_SET(clientFd, &writeFds);
+                maxFd = std::max(maxFd, clientFd);
+            } else if (FD_ISSET(i, &readFds)) {
+                maxFd = std::max(maxFd, i);
+            }
+
+            if (FD_ISSET(i, &writeFdsReady)) {
+                send32<uint32_t>(i, MAX_THREADS);
+                FD_CLR(i, &writeFds);
+                FD_SET(i, &readFds);
+                maxFd = std::max(maxFd, i);
+            }
         }
-
-        tpool.enqueue(std::bind(serveClient, clientFd));
     }
 
     close(s);
